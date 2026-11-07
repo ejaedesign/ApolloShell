@@ -50,6 +50,16 @@ struct WindowClampTests {
         #expect(clamp(leftHalf) == CGRect(x: 44, y: 30, width: 712, height: 952))
     }
 
+    @Test("rechts angehefteter Browser verliert nur die Breite der rechten Leiste")
+    func rightPinnedBrowserShrinksKeepingLeftEdge() {
+        let browser = CGRect(x: 100, y: 0, width: 1412, height: 982)
+        let result = WindowClamp.clampedFrame(window: browser, screen: screen, reservedWidth: bar, side: .right)
+
+        #expect(result == CGRect(x: 100, y: 0, width: 1368, height: 982))
+        #expect(result?.minX == browser.minX)
+        #expect(browser.width - (result?.width ?? browser.width) == bar)
+    }
+
     @Test("halb daruntergezogenes Fenster wird verschoben, Groesse bleibt")
     func draggedWindowMoves() {
         let dragged = CGRect(x: 10, y: 200, width: 600, height: 400)
