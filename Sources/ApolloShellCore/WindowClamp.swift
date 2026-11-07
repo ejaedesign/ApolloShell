@@ -100,6 +100,11 @@ public enum WindowClamp {
         CGRect(x: rect.minX, y: primaryHeight - rect.maxY, width: rect.width, height: rect.height)
     }
 
+    /// Ob die Fenstergroesse mehr als Rundung vom Ziel abweicht.
+    public static func requiresResize(from current: CGSize, to target: CGSize) -> Bool {
+        abs(target.width - current.width) > tolerance || abs(target.height - current.height) > tolerance
+    }
+
     /// Gleich bis auf Rundung.
     public static func isSameFrame(_ a: CGRect, _ b: CGRect) -> Bool {
         abs(a.minX - b.minX) <= tolerance && abs(a.minY - b.minY) <= tolerance

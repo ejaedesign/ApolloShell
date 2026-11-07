@@ -28,6 +28,16 @@ struct WindowClampTests {
         #expect(clamp(CGRect(x: 43.4, y: 30, width: 500, height: 400)) != nil)
     }
 
+    @Test("Groessenaenderungen erkennen beide Dimensionen")
+    func resizeDecisionChecksBothDimensions() {
+        let current = CGSize(width: 800, height: 600)
+
+        #expect(!WindowClamp.requiresResize(from: current, to: current))
+        #expect(WindowClamp.requiresResize(from: current, to: CGSize(width: 799, height: 600)))
+        #expect(WindowClamp.requiresResize(from: current, to: CGSize(width: 800, height: 599)))
+        #expect(WindowClamp.requiresResize(from: current, to: CGSize(width: 799, height: 599)))
+    }
+
     @Test("gefuelltes Fenster wird schmaler, rechte Kante bleibt")
     func filledWindowShrinks() {
         let filled = CGRect(x: 0, y: 30, width: 1512, height: 952)

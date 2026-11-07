@@ -511,7 +511,7 @@ final class WindowGuardWorker: @unchecked Sendable {
         // Erst schmaler, dann schieben: so ragt das Fenster zwischendurch
         // nie rechts ueber den Bildschirm. Lehnt die App die Groesse ab,
         // wird es trotzdem verschoben.
-        if abs(target.width - current.width) > WindowClamp.tolerance {
+        if WindowClamp.requiresResize(from: current.size, to: target.size) {
             AX.setSize(window, target.size)
         }
         AX.setPosition(window, target.origin)
