@@ -15,6 +15,77 @@ public struct ManualAppFolder: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+/// Intentional, local mutations for `BarDockOptions.manualFolders`.
+///
+/// This editor deliberately never canonicalizes the complete collection. Old
+/// rows can contain duplicate or unavailable bundle IDs (and memberships that
+/// overlap another folder); an unrelated edit must preserve those values.
+public enum ManualFolderEditor {
+    @discardableResult
+    public static func create(named name: String, in folders: inout [ManualAppFolder]) -> UUID? {
+        let name = trimmed(name)
+        guard !name.isEmpty else { return nil }
+        let folder = ManualAppFolder(name: name, bundleIDs: [])
+        folders.append(folder)
+        return folder.id
+    }
+
+    @discardableResult
+    public static func rename(_ id: UUID, to name: String, in folders: inout [ManualAppFolder]) -> Bool {
+        let name = trimmed(name)
+        guard !name.isEmpty, let index = folders.firstIndex(where: { $0.id == id }) else { return false }
+        folders[index].name = name
+        return true
+    }
+
+    @discardableResult
+    public static func removeFolder(_ id: UUID, from folders: inout [ManualAppFolder]) -> Bool {
+        guard let index = folders.firstIndex(where: { $0.id == id }) else { return false }
+        folders.remove(at: index)
+        return true
+    }
+
+    @discardableResult
+    public static func moveFolder(_ id: UUID, by step: Int, in folders: inout [ManualAppFolder]) -> Bool {
+        guard step != 0, let index = folders.firstIndex(where: { $0.id == id }) else { return false }
+        let target = index + step
+        guard folders.indices.contains(target) else { return false }
+        folders.swapAt(index, target)
+        return true
+    }
+
+    @discardableResult
+    public static func add(bundleID: String, to id: UUID, in folders: inout [ManualAppFolder]) -> Bool {
+        guard !bundleID.isEmpty, let index = folders.firstIndex(where: { $0.id == id }) else { return false }
+        folders[index].bundleIDs.append(bundleID)
+        return true
+    }
+
+    @discardableResult
+    public static func removeMember(at memberIndex: Int, from id: UUID, in folders: inout [ManualAppFolder]) -> Bool {
+        guard let folderIndex = folders.firstIndex(where: { $0.id == id }),
+              folders[folderIndex].bundleIDs.indices.contains(memberIndex)
+        else { return false }
+        folders[folderIndex].bundleIDs.remove(at: memberIndex)
+        return true
+    }
+
+    @discardableResult
+    public static func moveMember(at memberIndex: Int, in id: UUID, by step: Int, folders: inout [ManualAppFolder]) -> Bool {
+        guard step != 0, let folderIndex = folders.firstIndex(where: { $0.id == id }) else { return false }
+        let target = memberIndex + step
+        guard folders[folderIndex].bundleIDs.indices.contains(memberIndex),
+              folders[folderIndex].bundleIDs.indices.contains(target)
+        else { return false }
+        folders[folderIndex].bundleIDs.swapAt(memberIndex, target)
+        return true
+    }
+
+    private static func trimmed(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 /// Baut die sichtbaren Dock-Elemente aus manuellen Ordnern und den
 /// verbleibenden Apps. Der Typ kennt keine AppKit- oder SwiftUI-Typen, damit
 /// die Zusammensetzung direkt getestet werden kann.

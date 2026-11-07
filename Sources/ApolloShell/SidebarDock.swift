@@ -489,13 +489,12 @@ final class SidebarDockModel {
         return c
     }
 
-    func items(_ list: [Entry], smart: Bool) -> [DockItem] {
+    func items(_ list: [Entry], smart: Bool, folders: [ManualAppFolder] = []) -> [DockItem] {
         let slots = list.map { DockSlot(bundleID: $0.bundleID, pinned: $0.pinned, running: $0.running) }
-        guard smart else { return slots.map(DockItem.app) }
         let ids = Set(list.map(\.bundleID))
         let now = Date()
-        return DockClustering.items(
-            slots, fixed: [fileManagerID],
+        return ManualFolderPlanner.items(
+            slots, folders: folders, smartGroups: smart, fixed: [fileManagerID],
             weight: { [usage] in usage.weight($0, at: now) },
             kind: { [unowned self] in DockCategory.kind(bundleID: $0, category: self.category($0)) },
             partner: { [usage] in usage.partner($0, among: ids) }
@@ -682,7 +681,7 @@ struct SidebarDock: View {
 
     private var verticalColumn: some View {
         let entries = entries
-        let items = model.items(entries, smart: options.smartGroups)
+        let items = model.items(entries, smart: options.smartGroups, folders: options.manualFolders)
         let split = items.firstIndex { item in
             switch item {
             case .app(let s): !s.pinned
@@ -713,7 +712,7 @@ struct SidebarDock: View {
 
     private var horizontalRow: some View {
         let entries = entries
-        let items = DockItemPresentation.items(model.items(entries, smart: options.smartGroups), for: side)
+        let items = DockItemPresentation.items(model.items(entries, smart: options.smartGroups, folders: options.manualFolders), for: side)
         let split = items.firstIndex { item in
             switch item {
             case .app(let s): !s.pinned

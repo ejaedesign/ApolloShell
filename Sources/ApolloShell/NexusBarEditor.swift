@@ -278,6 +278,7 @@ private struct NexusBarOptions: View {
                 }
             }
             .pickerStyle(.segmented)
+            NexusManualFoldersSection(folders: options.manualFolders)
         case .clock:
             let options = binding(\.clock, BarModule.clock, fallback: BarClockOptions())
             NexusToggle(title: "Show Icon", isOn: options.showIcon)
@@ -333,6 +334,215 @@ private struct NexusBarOptions: View {
             set: { store.settings.bar.layout.update(id: id, to: $0) },
             read: read, make: make, fallback: fallback
         )
+    }
+}
+
+/// Nexus > Leiste > Dock: Nutzerordner bleiben ausschliesslich in
+/// `BarDockOptions.manualFolders`. Das Lesen des Katalogs oder ein Wechsel der
+/// Smart Groups ruft hier keine Normalisierung auf; nur eine ausdrueckliche
+/// Bedienaktion schreibt die jeweilige, gezielte Aenderung.
+private struct NexusManualFoldersSection: View {
+    @Binding var folders: [ManualAppFolder]
+    @State private var newFolderName = ""
+    @State private var folderPickingApp: UUID?
+    @State private var picksApp = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Manual Folders")
+                .font(.headline)
+            Text("Keep selected apps together. Missing apps remain saved and return when installed again.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(Array(folders.enumerated()), id: \.element.id) { index, folder in
+                NexusManualFolderRow(
+                    folder: folder,
+                    isFirst: index == 0,
+                    isLast: index == folders.count - 1,
+                    onRename: { rename(folder.id, to: $0) },
+                    onMove: { moveFolder(folder.id, by: $0) },
+                    onRemove: { removeFolder(folder.id) },
+                    onAddApp: { pickApp(for: folder.id) },
+                    onMoveMember: { moveMember(at: $0, in: folder.id, by: $1) },
+                    onRemoveMember: { removeMember(at: $0, from: folder.id) }
+                )
+                .nexusReorder("manual-folder", index: index, count: folders.count, move: reorderFolders)
+            }
+            HStack(spacing: 8) {
+                TextField("New Folder Name", text: $newFolderName)
+                Button("Add Folder") { addFolder() }
+                    .disabled(newFolderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .sheet(isPresented: $picksApp, onDismiss: { folderPickingApp = nil }) {
+            if let folderID = folderPickingApp {
+                NexusBarAppPicker(current: "", onPick: { bundleID in
+                    change { _ = ManualFolderEditor.add(bundleID: bundleID, to: folderID, in: &$0) }
+                    picksApp = false
+                }, onCancel: { picksApp = false })
+            }
+        }
+    }
+
+    private func change(_ mutate: (inout [ManualAppFolder]) -> Void) {
+        var next = folders
+        mutate(&next)
+        folders = next
+    }
+
+    private func addFolder() {
+        change { _ = ManualFolderEditor.create(named: newFolderName, in: &$0) }
+        newFolderName = ""
+    }
+
+    private func rename(_ id: UUID, to name: String) {
+        change { _ = ManualFolderEditor.rename(id, to: name, in: &$0) }
+    }
+
+    private func removeFolder(_ id: UUID) {
+        change { _ = ManualFolderEditor.removeFolder(id, from: &$0) }
+    }
+
+    private func moveFolder(_ id: UUID, by step: Int) {
+        change { _ = ManualFolderEditor.moveFolder(id, by: step, in: &$0) }
+    }
+
+    private func reorderFolders(_ offsets: IndexSet, _ destination: Int) {
+        change { $0.move(fromOffsets: offsets, toOffset: destination) }
+    }
+
+    private func pickApp(for folderID: UUID) {
+        folderPickingApp = folderID
+        picksApp = true
+    }
+
+    private func moveMember(at index: Int, in folderID: UUID, by step: Int) {
+        change { _ = ManualFolderEditor.moveMember(at: index, in: folderID, by: step, folders: &$0) }
+    }
+
+    private func removeMember(at index: Int, from folderID: UUID) {
+        change { _ = ManualFolderEditor.removeMember(at: index, from: folderID, in: &$0) }
+    }
+}
+
+private struct NexusManualFolderRow: View {
+    let folder: ManualAppFolder
+    let isFirst: Bool
+    let isLast: Bool
+    let onRename: @MainActor @Sendable (String) -> Void
+    let onMove: (Int) -> Void
+    let onRemove: () -> Void
+    let onAddApp: () -> Void
+    let onMoveMember: (Int, Int) -> Void
+    let onRemoveMember: (Int) -> Void
+
+    var body: some View {
+        DisclosureGroup {
+            TextField("Folder Name", text: Binding(get: { folder.name }, set: onRename))
+            ForEach(Array(folder.bundleIDs.enumerated()), id: \.offset) { index, bundleID in
+                NexusManualFolderMemberRow(
+                    bundleID: bundleID,
+                    isFirst: index == 0,
+                    isLast: index == folder.bundleIDs.count - 1,
+                    onMove: { onMoveMember(index, $0) },
+                    onRemove: { onRemoveMember(index) }
+                )
+                .nexusReorder("manual-member-\(folder.id.uuidString)", index: index, count: folder.bundleIDs.count) { offsets, destination in
+                    guard let source = offsets.first else { return }
+                    let target = destination > source ? destination - 1 : destination
+                    onMoveMember(source, target - source)
+                }
+            }
+            Button { onAddApp() } label: {
+                Label("Add App…", systemImage: "plus")
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Label(folder.name, systemImage: "folder.fill")
+                Spacer(minLength: 8)
+                controls
+            }
+        }
+        .contextMenu {
+            Button("Move Up") { onMove(-1) }.disabled(isFirst)
+            Button("Move Down") { onMove(1) }.disabled(isLast)
+            Divider()
+            Button("Remove", role: .destructive) { onRemove() }
+        }
+        .accessibilityAction(named: "Move Up") { onMove(-1) }
+        .accessibilityAction(named: "Move Down") { onMove(1) }
+        .accessibilityAction(named: "Remove") { onRemove() }
+    }
+
+    private var controls: some View {
+        HStack(spacing: 3) {
+            Button { onMove(-1) } label: { Image(systemName: "arrow.up") }
+                .disabled(isFirst)
+                .help("Move Up")
+                .accessibilityLabel("Move \(folder.name) Up")
+            Button { onMove(1) } label: { Image(systemName: "arrow.down") }
+                .disabled(isLast)
+                .help("Move Down")
+                .accessibilityLabel("Move \(folder.name) Down")
+            Button(role: .destructive) { onRemove() } label: { Image(systemName: "minus.circle") }
+                .help("Remove")
+                .accessibilityLabel("Remove \(folder.name)")
+        }
+        .buttonStyle(.borderless)
+    }
+}
+
+private struct NexusManualFolderMemberRow: View {
+    let bundleID: String
+    let isFirst: Bool
+    let isLast: Bool
+    let onMove: (Int) -> Void
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let info = BarApps.info(for: bundleID) {
+                Image(nsImage: info.icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 18, height: 18)
+                Text(info.name)
+            } else {
+                Text(bundleID)
+                    .foregroundStyle(.secondary)
+                Text("Not Installed")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            Spacer(minLength: 8)
+            controls
+        }
+        .contextMenu {
+            Button("Move Up") { onMove(-1) }.disabled(isFirst)
+            Button("Move Down") { onMove(1) }.disabled(isLast)
+            Divider()
+            Button("Remove", role: .destructive) { onRemove() }
+        }
+        .accessibilityAction(named: "Move Up") { onMove(-1) }
+        .accessibilityAction(named: "Move Down") { onMove(1) }
+        .accessibilityAction(named: "Remove") { onRemove() }
+    }
+
+    private var controls: some View {
+        HStack(spacing: 3) {
+            Button { onMove(-1) } label: { Image(systemName: "arrow.up") }
+                .disabled(isFirst)
+                .help("Move Up")
+                .accessibilityLabel("Move \(bundleID) Up")
+            Button { onMove(1) } label: { Image(systemName: "arrow.down") }
+                .disabled(isLast)
+                .help("Move Down")
+                .accessibilityLabel("Move \(bundleID) Down")
+            Button(role: .destructive) { onRemove() } label: { Image(systemName: "minus.circle") }
+                .help("Remove")
+                .accessibilityLabel("Remove \(bundleID)")
+        }
+        .buttonStyle(.borderless)
     }
 }
 

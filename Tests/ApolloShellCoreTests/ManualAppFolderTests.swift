@@ -93,4 +93,53 @@ struct ManualAppFolderTests {
 
         #expect(displayed == ["dev.a", "media.a"])
     }
+
+    @Test("Ordnerbearbeitung trimmt Namen und aendert nur die ausdruecklich bearbeitete Stelle")
+    func editorMutationsPreserveUntouchedLegacyData() {
+        var folders = [
+            ManualAppFolder(id: firstID, name: "  Bestehend\n", bundleIDs: ["missing.app", "dev.a", "dev.a"]),
+            ManualAppFolder(id: secondID, name: "Zwei", bundleIDs: ["dev.a", "chat.a"]),
+        ]
+
+        #expect(!ManualFolderEditor.rename(firstID, to: " \n ", in: &folders))
+        #expect(folders[0].name == "  Bestehend\n")
+        #expect(ManualFolderEditor.rename(firstID, to: " \n Arbeit \t", in: &folders))
+        #expect(ManualFolderEditor.add(bundleID: "media.a", to: firstID, in: &folders))
+        #expect(ManualFolderEditor.removeMember(at: 1, from: firstID, in: &folders))
+
+        #expect(folders[0] == ManualAppFolder(id: firstID, name: "Arbeit", bundleIDs: ["missing.app", "dev.a", "media.a"]))
+        #expect(folders[1] == ManualAppFolder(id: secondID, name: "Zwei", bundleIDs: ["dev.a", "chat.a"]))
+    }
+
+    @Test("Ordner und Mitglieder haben sichere Verschiebegrenzen und explizite Entfernung")
+    func editorMoveBoundariesAndExplicitRemoval() {
+        var folders = [
+            ManualAppFolder(id: firstID, name: "Eins", bundleIDs: ["a", "b"]),
+            ManualAppFolder(id: secondID, name: "Zwei", bundleIDs: ["c"]),
+        ]
+
+        #expect(!ManualFolderEditor.moveFolder(firstID, by: -1, in: &folders))
+        #expect(!ManualFolderEditor.moveFolder(secondID, by: 1, in: &folders))
+        #expect(ManualFolderEditor.moveFolder(secondID, by: -1, in: &folders))
+        #expect(!ManualFolderEditor.moveMember(at: 0, in: firstID, by: -1, folders: &folders))
+        #expect(!ManualFolderEditor.moveMember(at: 1, in: firstID, by: 1, folders: &folders))
+        #expect(ManualFolderEditor.moveMember(at: 1, in: firstID, by: -1, folders: &folders))
+        #expect(ManualFolderEditor.removeFolder(secondID, from: &folders))
+        #expect(!ManualFolderEditor.removeFolder(secondID, from: &folders))
+
+        #expect(folders == [ManualAppFolder(id: firstID, name: "Eins", bundleIDs: ["b", "a"])])
+    }
+
+    @Test("neue Ordner bekommen eine frische Kennung und lehnen leere Namen ab")
+    func editorCreatesFreshFolderOnlyForNonEmptyName() {
+        var folders = [ManualAppFolder(id: firstID, name: "Bestehend", bundleIDs: [])]
+
+        #expect(ManualFolderEditor.create(named: " \n ", in: &folders) == nil)
+        let created = ManualFolderEditor.create(named: " \n Neu \t", in: &folders)
+
+        #expect(created != nil)
+        #expect(created != firstID)
+        #expect(folders.map(\.id).count == 2)
+        #expect(folders.last == ManualAppFolder(id: created!, name: "Neu", bundleIDs: []))
+    }
 }
