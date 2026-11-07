@@ -27,6 +27,23 @@ public enum DockItem: Equatable, Sendable, Identifiable {
     }
 }
 
+/// Adapts composed Dock items to the interaction surface that renders them.
+/// Bottom docks have no stack popout, so groups become their ordinary app
+/// items there; sidebars keep the group face and its stack interaction.
+public enum DockItemPresentation {
+    public static func items(_ items: [DockItem], for side: BarSide) -> [DockItem] {
+        guard side.contentRoute == .dock else { return items }
+        return items.flatMap { item in
+            switch item {
+            case .app:
+                [item]
+            case .group(let group):
+                group.members.map(DockItem.app)
+            }
+        }
+    }
+}
+
 public enum DockCategory {
     public struct Kind: Equatable, Sendable {
         public var key: String

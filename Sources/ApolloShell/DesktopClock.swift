@@ -146,12 +146,13 @@ private final class DesktopClockWindow {
         let size = NSHostingView(rootView: DesktopClockView(model: model).shellTheme()).fittingSize
         let visible = screen.visibleFrame
         // Der View bringt 24 pt Schatten-Rand mit; die 32 pt gelten fuer die Schrift.
-        let inset = margin - 24
-        window.setFrame(NSRect(
-            x: side == .right ? visible.minX + inset : visible.maxX - size.width - inset,
-            y: visible.minY + inset,
-            width: size.width,
-            height: size.height
+        window.setFrame(DesktopClockLayout.frame(
+            visibleFrame: visible,
+            clockSize: size,
+            margin: margin,
+            shadowInset: 24,
+            dockThickness: Sidebar.width,
+            side: side
         ), display: true)
     }
 

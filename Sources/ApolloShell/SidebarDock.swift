@@ -712,7 +712,7 @@ struct SidebarDock: View {
 
     private var horizontalRow: some View {
         let entries = entries
-        let items = model.items(entries, smart: options.smartGroups)
+        let items = DockItemPresentation.items(model.items(entries, smart: options.smartGroups), for: side)
         let split = items.firstIndex { item in
             switch item {
             case .app(let s): !s.pinned
