@@ -149,6 +149,7 @@ struct DockFileItem: View {
     let file: DockFile
     let model: SidebarDockModel
     let size: CGFloat
+    @Environment(\.bottomDockInteraction) private var bottomDockInteraction
     /// Bottom has no popout anchor yet, so folders fall back to their ordinary
     /// open/context/drop behavior instead of creating an off-screen stack.
     var allowsStacks = true
@@ -156,14 +157,22 @@ struct DockFileItem: View {
     var body: some View {
         if file.folder && allowsStacks {
             DockStackButton(id: file.id, help: file.name, image: file.icon, make: { model.stack(file) },
-                            onMenu: { DockSmartMenu.file(file.url, pinned: file, model: model, at: $0) },
+                            onMenu: { view in
+                                BottomDockMenuLease.track(bottomDockInteraction?.leaseChanged) {
+                                    DockSmartMenu.file(file.url, pinned: file, model: model, at: view)
+                                }
+                            },
                             onDropFiles: { model.move($0, into: file.url) }) {
                 Image(nsImage: file.icon).resizable().interpolation(.high).frame(width: size, height: size)
             }
         } else {
             DockPlainItem(id: file.id, help: file.name, image: file.icon, size: size,
                           onClick: { model.open(file.url) },
-                          onMenu: { DockSmartMenu.file(file.url, pinned: file, model: model, at: $0) },
+                          onMenu: { view in
+                              BottomDockMenuLease.track(bottomDockInteraction?.leaseChanged) {
+                                  DockSmartMenu.file(file.url, pinned: file, model: model, at: view)
+                              }
+                          },
                           onDropFiles: { urls in if file.folder { model.move(urls, into: file.url) } })
         }
     }
@@ -172,12 +181,17 @@ struct DockFileItem: View {
 struct DockTrashItem: View {
     let model: SidebarDockModel
     let size: CGFloat
+    @Environment(\.bottomDockInteraction) private var bottomDockInteraction
 
     var body: some View {
         let img = DockTrash.icon(full: model.trashFull)
         DockPlainItem(id: "trash", help: String(localized: "Trash"), image: img, size: size,
                       onClick: { DockTrash.open() },
-                      onMenu: { DockSmartMenu.trash(model: model, at: $0) },
+                      onMenu: { view in
+                          BottomDockMenuLease.track(bottomDockInteraction?.leaseChanged) {
+                              DockSmartMenu.trash(model: model, at: view)
+                          }
+                      },
                       onDropFiles: { model.trash($0) },
                       onDropApp: { model.dropOnTrash($0) })
     }

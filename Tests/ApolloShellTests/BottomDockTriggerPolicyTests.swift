@@ -8,17 +8,56 @@ struct BottomDockTriggerPolicyTests {
     @Test("utilities hover strip keeps bottom-right trigger priority")
     func utilitiesHoverStripIsExcluded() {
         let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
-        let utilities = CGRect(x: 985, y: -2, width: 443, height: 4)
+        let utilities = EdgeHoverArea.bottomRight(
+            screen: screen, width: UtilitiesView.width, height: 0, margin: 25, open: false
+        )
+        let exterior = CGPoint(x: utilities.midX, y: screen.minY - 1)
+        let interior = CGPoint(x: utilities.midX, y: screen.minY + 1)
 
         #expect(BottomDockTriggerPolicy.excludesTrigger(
-            CGPoint(x: 1200, y: 1), screen: screen, utilitiesTrigger: utilities
+            exterior, screen: screen, utilitiesTrigger: utilities
+        ))
+        #expect(BottomDockTriggerPolicy.excludesTrigger(
+            interior, screen: screen, utilitiesTrigger: utilities
         ))
         #expect(!BottomDockTriggerPolicy.excludesTrigger(
-            CGPoint(x: 800, y: 1), screen: screen, utilitiesTrigger: utilities
+            CGPoint(x: utilities.minX - 1, y: screen.minY + 1), screen: screen, utilitiesTrigger: utilities
         ))
         #expect(!BottomDockTriggerPolicy.excludesTrigger(
-            CGPoint(x: 1200, y: 10), screen: screen, utilitiesTrigger: utilities
+            CGPoint(x: utilities.midX, y: screen.minY + 10), screen: screen, utilitiesTrigger: utilities
         ))
+    }
+
+    @Test("concealed bottom dock remains hidden after its arrival decision")
+    func concealedBottomDockDoesNotArriveVisible() {
+        #expect(!SidebarScreenVisibility.shouldAppearAfterArrival(
+            isHiddenForFullscreen: false, isConcealedForBottomDock: true
+        ))
+        #expect(SidebarScreenVisibility.shouldIgnoreMouseEvents(
+            isHiddenForFullscreen: false, isConcealedForBottomDock: true
+        ))
+        #expect(SidebarScreenVisibility.shouldAppearAfterArrival(
+            isHiddenForFullscreen: false, isConcealedForBottomDock: false
+        ))
+    }
+
+    @Test("native menu leases bracket tracking without affecting non-bottom menus")
+    func nativeMenuLeaseBracketsTracking() {
+        var changes: [(BottomDockLease, Bool)] = []
+        BottomDockMenuLease.track({ lease, active in
+            changes.append((lease, active))
+        }) {
+            #expect(changes.map(\.1) == [true])
+        }
+        #expect(changes.map(\.0) == [.nativeMenu, .nativeMenu])
+        #expect(changes.map(\.1) == [true, false])
+
+        var normalMenuTrackingCount = 0
+        BottomDockMenuLease.track(nil) {
+            normalMenuTrackingCount += 1
+        }
+        #expect(normalMenuTrackingCount == 1)
+        #expect(changes.map(\.1) == [true, false])
     }
 
     @Test("timer routing keeps display identity and generation token")

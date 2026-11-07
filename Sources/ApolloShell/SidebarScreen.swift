@@ -3,6 +3,21 @@ import ApolloShellCore
 import os
 import SwiftUI
 
+/// Shared decision for normal visibility application and delayed arrival.
+/// A bottom-concealed panel must never be revived by its launch animation.
+enum SidebarScreenVisibility {
+    static func shouldAppearAfterArrival(isHiddenForFullscreen: Bool, isConcealedForBottomDock: Bool) -> Bool {
+        !isHiddenForFullscreen && !isConcealedForBottomDock
+    }
+
+    static func shouldIgnoreMouseEvents(isHiddenForFullscreen: Bool, isConcealedForBottomDock: Bool) -> Bool {
+        !shouldAppearAfterArrival(
+            isHiddenForFullscreen: isHiddenForFullscreen,
+            isConcealedForBottomDock: isConcealedForBottomDock
+        )
+    }
+}
+
 /// Die Leiste EINES Bildschirms: ihr Fenster, ihre Ansicht und ihr
 /// Statuspopout. Die Modelle darin gehoeren dem Verwalter und sind geteilt.
 @MainActor
@@ -127,9 +142,12 @@ final class SidebarScreen {
     var isVisibleForDemand: Bool { !isHiddenForFullscreen && !isConcealedForBottomDock }
 
     private func applyVisibility() {
-        let hidden = isHiddenForFullscreen || isConcealedForBottomDock
-        panel.alphaValue = hidden ? 0 : 1
-        panel.ignoresMouseEvents = hidden
+        let ignoresMouseEvents = SidebarScreenVisibility.shouldIgnoreMouseEvents(
+            isHiddenForFullscreen: isHiddenForFullscreen,
+            isConcealedForBottomDock: isConcealedForBottomDock
+        )
+        panel.alphaValue = ignoresMouseEvents ? 0 : 1
+        panel.ignoresMouseEvents = ignoresMouseEvents
     }
 
     /// Nur nach vorne holen, wenn sie sichtbar sein soll und es gerade nicht
@@ -142,6 +160,13 @@ final class SidebarScreen {
         panel.alphaValue = 0
         DispatchQueue.main.asyncAfter(deadline: .now() + d) { [weak self] in
             guard let self else { return }
+            guard SidebarScreenVisibility.shouldAppearAfterArrival(
+                isHiddenForFullscreen: self.isHiddenForFullscreen,
+                isConcealedForBottomDock: self.isConcealedForBottomDock
+            ) else {
+                self.applyVisibility()
+                return
+            }
             let rm = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
             if !rm {
                 let a = CASpringAnimation(keyPath: "transform.translation.x")

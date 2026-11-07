@@ -6,8 +6,8 @@ import SwiftUI
 /// App-layer priority rule: Utilities owns its existing lower-right edge strip
 /// before a concealed bottom dock can begin its reveal dwell.
 enum BottomDockTriggerPolicy {
-    static func excludesTrigger(_ point: CGPoint, screen: CGRect, utilitiesTrigger: CGRect) -> Bool {
-        screen.contains(point) && utilitiesTrigger.contains(point)
+    static func excludesTrigger(_ point: CGPoint, screen _: CGRect, utilitiesTrigger: CGRect) -> Bool {
+        utilitiesTrigger.contains(point)
     }
 }
 
@@ -26,6 +26,16 @@ enum BottomDockTimerRoute {
 @MainActor
 final class BottomDockInteraction {
     var leaseChanged: (BottomDockLease, Bool) -> Void = { _, _ in }
+}
+
+/// Keeps a bottom dock visible for the exact synchronous AppKit menu-tracking
+/// interval. A nil callback is the normal sidebar/launcher path and is a no-op.
+enum BottomDockMenuLease {
+    static func track(_ leaseChanged: ((BottomDockLease, Bool) -> Void)?, _ tracking: () -> Void) {
+        leaseChanged?(.nativeMenu, true)
+        defer { leaseChanged?(.nativeMenu, false) }
+        tracking()
+    }
 }
 
 private struct BottomDockInteractionKey: EnvironmentKey {
@@ -161,13 +171,13 @@ final class BottomDockCoordinator {
     }
 
     private func routeCurrentPointer() {
-        guard let model else { return }
+        guard model != nil else { return }
         let point = NSEvent.mouseLocation
         let event: BottomDockEvent
-        if let id = BottomDockGeometry.displayOwning(point, among: model.physicalDisplays),
-           let screen = physicalFrames[id],
-           let state = model.state(for: id),
-           shouldYieldTrigger(at: point, screen: screen, state: state) {
+        // Utilities' lower-right strip reaches below `screen.minY`; test it
+        // before physical ownership so that exterior pixels cannot begin a
+        // bottom-dock reveal dwell on their display.
+        if shouldYieldUtilitiesTrigger(at: point) {
             event = .pointerLeft
         } else {
             event = .pointerMoved(point)
@@ -175,12 +185,13 @@ final class BottomDockCoordinator {
         reduce(event)
     }
 
-    private func shouldYieldTrigger(at point: CGPoint, screen: CGRect, state: BottomDockDisplayState) -> Bool {
-        guard state.phase == .concealed || state.phase == .revealPending else { return false }
-        let utilitiesTrigger = EdgeHoverArea.bottomRight(
-            screen: screen, width: UtilitiesView.width, height: 0, margin: 25, open: false
-        )
-        return BottomDockTriggerPolicy.excludesTrigger(point, screen: screen, utilitiesTrigger: utilitiesTrigger)
+    private func shouldYieldUtilitiesTrigger(at point: CGPoint) -> Bool {
+        physicalFrames.values.contains { screen in
+            let utilitiesTrigger = EdgeHoverArea.bottomRight(
+                screen: screen, width: UtilitiesView.width, height: 0, margin: 25, open: false
+            )
+            return BottomDockTriggerPolicy.excludesTrigger(point, screen: screen, utilitiesTrigger: utilitiesTrigger)
+        }
     }
 
     private func reduce(_ event: BottomDockEvent) {
