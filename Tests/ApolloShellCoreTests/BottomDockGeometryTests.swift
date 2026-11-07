@@ -29,6 +29,24 @@ struct BottomDockGeometryTests {
         #expect(BarSide.right.axis == .vertical)
     }
 
+    @Test("unteres Panel ist bildschirmbreit und enthaelt nur unteren Ueberstand")
+    func bottomPanelFrame() {
+        let frame = BarPanelGeometry.frame(screen: screen, visibleTop: 958, thickness: 44,
+                                           edgeBleed: 0, bottomBleed: SidebarBleed.depth, expandedWidth: 300, side: .bottom)
+
+        #expect(frame == CGRect(x: 0, y: -SidebarBleed.depth, width: 1512, height: 44 + SidebarBleed.depth))
+    }
+
+    @Test("nur unten verwendet die horizontale Dock-Inhaltsroute und unterdrueckt Seitenpopouts")
+    func bottomContentRoute() {
+        #expect(BarSide.bottom.contentRoute == .dock)
+        #expect(BarSide.bottom.allowsSidePopouts == false)
+        #expect(BarSide.left.contentRoute == .sidebar)
+        #expect(BarSide.right.contentRoute == .sidebar)
+        #expect(BarSide.left.allowsSidePopouts)
+        #expect(BarSide.right.allowsSidePopouts)
+    }
+
     @Test("untere Leiste blutet nur unten ueber einen freien Rand")
     func bottomBleed() {
         let free = SidebarBleed.edges(screen: screen, others: [screen], side: .bottom)

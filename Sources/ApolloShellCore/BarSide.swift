@@ -5,6 +5,12 @@ public enum BarPlacementAxis: Equatable, Sendable {
     case vertical, horizontal
 }
 
+/// The SwiftUI route rendered for a placement. Bottom is deliberately a dock,
+/// not a rotated sidebar with modules that only understand vertical anchors.
+public enum BarContentRoute: Equatable, Sendable {
+    case sidebar, dock
+}
+
 /// Bildschirmkante, die eine Leiste belegt.
 public enum BarScreenEdge: Equatable, Sendable {
     case left, right, bottom
@@ -77,10 +83,41 @@ public enum BarSide: String, Codable, CaseIterable, Sendable {
 
     public var axis: BarPlacementAxis { geometry.axis }
     public var screenEdge: BarScreenEdge { geometry.screenEdge }
+    public var contentRoute: BarContentRoute { axis == .horizontal ? .dock : .sidebar }
+    /// Side popouts have no horizontal anchor yet. The dock remains usable;
+    /// stack triggers are disabled until the dedicated bottom popout lands.
+    public var allowsSidePopouts: Bool { contentRoute == .sidebar }
 
     /// `rect` an der senkrechten Mittellinie von `bounds` gespiegelt. Ihre
     /// eigene Umkehrung.
     public static func mirrored(_ rect: CGRect, in bounds: CGRect) -> CGRect {
         CGRect(x: bounds.minX + bounds.maxX - rect.maxX, y: rect.minY, width: rect.width, height: rect.height)
+    }
+}
+
+/// AppKit panel geometry for every persisted bar placement. The bottom route
+/// is intentionally independent from the vertical side-panel expansion.
+public enum BarPanelGeometry {
+    public static func frame(
+        screen: CGRect,
+        visibleTop: CGFloat,
+        thickness: CGFloat,
+        edgeBleed: CGFloat,
+        bottomBleed: CGFloat,
+        expandedWidth: CGFloat,
+        side: BarSide
+    ) -> CGRect {
+        let thickness = max(0, thickness)
+        let edgeBleed = max(0, edgeBleed)
+        let bottomBleed = max(0, bottomBleed)
+        if side.contentRoute == .dock {
+            return CGRect(x: screen.minX, y: screen.minY - bottomBleed,
+                          width: screen.width, height: thickness + bottomBleed)
+        }
+        var rect = CGRect(x: screen.minX - edgeBleed, y: screen.minY - bottomBleed,
+                          width: max(0, expandedWidth) + edgeBleed,
+                          height: max(0, visibleTop - screen.minY) + bottomBleed)
+        if side == .right { rect = BarSide.mirrored(rect, in: screen) }
+        return rect
     }
 }

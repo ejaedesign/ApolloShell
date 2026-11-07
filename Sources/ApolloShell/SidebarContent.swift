@@ -19,12 +19,31 @@ struct SidebarContent: View {
     let context: BarModuleContext
 
     @Environment(\.shellStyle) private var style
+    @Environment(\.barSide) private var side
 
     var body: some View {
+        if side.contentRoute == .dock {
+            // Bottom is intentionally a dedicated dock. It does not rotate or
+            // expose the side-only module arrangement.
+            SidebarDock(model: context.dock, options: dockOptions)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            verticalSidebar
+        }
+    }
+
+    private var dockOptions: BarDockOptions {
+        for entry in settings.settings.bar.layout.entries {
+            if case .dock(let options) = entry.module { return options }
+        }
+        return BarDockOptions()
+    }
+
+    private var verticalSidebar: some View {
         let entries = settings.settings.bar.layout.entries
         // Mit Theme bestimmen `--apollo-bar-item-spacing` und
         // `--apollo-bar-padding` den Abstand der Bausteine und den Rand.
-        BarStack(spacing: style.barItemSpacing(8)) {
+        return BarStack(spacing: style.barItemSpacing(8)) {
             ForEach(entries) { entry in
                 BarModuleView(entry: entry, context: context)
             }

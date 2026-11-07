@@ -26,6 +26,14 @@ struct SidebarRoot: View {
     @Environment(\.shellStyle) private var style
 
     var body: some View {
+        if edges.side.contentRoute == .dock {
+            BottomDockRoot(settings: settings, context: context, edges: edges)
+        } else {
+            sidebarBody
+        }
+    }
+
+    private var sidebarBody: some View {
         GeometryReader { geometry in
             let full = sizes[popout.shown] ?? CGSize(width: StatusPopoutContent.width(popout.shown), height: 200)
             let open = popout.isOpen
@@ -67,6 +75,29 @@ struct SidebarRoot: View {
         }
         // Das Popout-Modell kommt ueber die Umgebung zur Statuskapsel.
         .environment(popout)
+    }
+
+    /// Full-width horizontal dock. It shares the bar content seam with sidebars
+    /// while keeping bottom mode free from side-only popout geometry.
+    struct BottomDockRoot: View {
+        let settings: ShellSettingsStore
+        let context: BarModuleContext
+        let edges: SidebarEdges
+        @Environment(\.shellStyle) private var style
+
+        var body: some View {
+            GeometryReader { geometry in
+                let dockHeight = max(0, geometry.size.height - edges.bottom)
+                ZStack(alignment: .topLeading) {
+                    Color.clear
+                        .modifier(SidebarGlass(shape: RoundedRectangle(cornerRadius: style.barRadius(0), style: .continuous)))
+                    SidebarContent(settings: settings, context: context)
+                        .environment(\.barSide, .bottom)
+                        .frame(width: geometry.size.width, height: dockHeight, alignment: .topLeading)
+                }
+                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+            }
+        }
     }
 
     /// Alle drei Inhalte sind immer aufgebaut (nur unsichtbar): so ist die

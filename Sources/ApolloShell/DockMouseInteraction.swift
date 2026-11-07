@@ -209,7 +209,8 @@ final class DockMouseView: NSView, NSDraggingSource {
         // das Scrollen ihr - sonst liesse sie sich ueber den Symbolen nicht
         // mehr bewegen.
         if let scrollView = enclosingScrollView, let document = scrollView.documentView,
-           document.frame.height > scrollView.contentView.bounds.height + 1 {
+           (document.frame.height > scrollView.contentView.bounds.height + 1
+                || document.frame.width > scrollView.contentView.bounds.width + 1) {
             super.scrollWheel(with: event)
             return
         }

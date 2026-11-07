@@ -34,7 +34,7 @@ struct NexusBarPage: View {
             }
             Divider()
             NexusBarPreview(store: store)
-                .frame(width: 124)
+                .frame(width: store.settings.bar.side.contentRoute == .dock ? 280 : 124)
         }
         .sheet(isPresented: $showsGallery) {
             NexusBarGallery(layout: layout, onAdd: add, onCancel: { showsGallery = false })
@@ -101,6 +101,7 @@ private struct NexusBarPlacementSection: View {
             Picker("Position", selection: $store.settings.bar.side) {
                 Text("Left").tag(BarSide.left)
                 Text("Right").tag(BarSide.right)
+                Text("Bottom").tag(BarSide.bottom)
             }
             .pickerStyle(.segmented)
             NexusToggle(title: "Keep Windows Clear",
@@ -441,17 +442,25 @@ struct NexusBarPreview: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let scale = min(1, max(geometry.size.height - 62, 80) / barHeight)
+            let bottom = store.settings.bar.side.contentRoute == .dock
+            let previewSize = bottom
+                ? CGSize(width: NexusBarPreviewModels.bottomDockWidth, height: Sidebar.width)
+                : CGSize(width: Sidebar.width, height: barHeight)
+            let available = bottom
+                ? CGSize(width: max(geometry.size.width - 16, 1), height: max(geometry.size.height - 62, 1))
+                : CGSize(width: geometry.size.width, height: max(geometry.size.height - 62, 1))
+            let scale = min(1, min(available.width / previewSize.width, available.height / previewSize.height))
             VStack(spacing: 8) {
                 Text("Preview")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                NexusScaledPreview(scale: scale, frameSize: CGSize(width: Sidebar.width * scale, height: barHeight * scale),
+                NexusScaledPreview(scale: scale,
+                                   frameSize: CGSize(width: previewSize.width * scale, height: previewSize.height * scale),
                                    cornerRadius: 9 / scale, accessibilityLabel: String(localized: "Preview of the Bar")) {
                     SidebarContent(settings: store, context: context)
                         .environment(\.barPreview, true)
                         .environment(\.barSide, store.settings.bar.side)
-                        .frame(width: Sidebar.width, height: barHeight)
+                        .frame(width: previewSize.width, height: previewSize.height)
                 }
                 Text("Sample Data")
                     .font(.caption2)
@@ -469,6 +478,9 @@ struct NexusBarPreview: View {
 /// Vorschau keinen zeigt.
 @MainActor
 enum NexusBarPreviewModels {
+    /// Enough room to show a horizontal dock as a dock, not a rotated sidebar.
+    static let bottomDockWidth: CGFloat = 360
+
     /// Hauptbildschirm bis unter die Menueleiste, wie `Sidebar.layout`.
     static var barHeight: CGFloat {
         guard let screen = NSScreen.screens.first else { return 900 }

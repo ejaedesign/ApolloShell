@@ -147,6 +147,8 @@ final class SidebarScreen {
     /// Popout offen: Fenster breiter, die Leiste bleibt an ihrer Kante 44
     /// breit, der Rest ist durchsichtig, bis das Glas hineinwaechst.
     private func setExpanded(_ expanded: Bool) {
+        // Bottom intentionally has no side popout anchor yet.
+        guard settings.settings.bar.side.allowsSidePopouts else { return }
         guard expanded != self.expanded else { return }
         self.expanded = expanded
         layout()
@@ -161,10 +163,17 @@ final class SidebarScreen {
         if edges.side != side { edges.side = side }
         if edges.left != e.left { edges.left = e.left }
         if edges.bottom != e.bottom { edges.bottom = e.bottom }
-        let width = (expanded ? StatusPopout.expandedWidth : Sidebar.width) + e.left
-        var rect = NSRect(x: frame.minX - e.left, y: frame.minY - e.bottom, width: width,
-                          height: visibleTop - frame.minY + e.bottom)
-        if side == .right { rect = BarSide.mirrored(rect, in: frame) }
+        if side.contentRoute == .dock { expanded = false }
+        let panelWidth = (expanded ? StatusPopout.expandedWidth : Sidebar.width) + e.left
+        let rect = BarPanelGeometry.frame(
+            screen: frame,
+            visibleTop: visibleTop,
+            thickness: Sidebar.width,
+            edgeBleed: e.left,
+            bottomBleed: e.bottom,
+            expandedWidth: panelWidth - e.left,
+            side: side
+        )
         lastFrame = rect
         // Mit dem echten Panelrahmen vergleichen, nicht mit `lastFrame`: beim
         // Umstecken verschiebt macOS Fenster auch selbst.

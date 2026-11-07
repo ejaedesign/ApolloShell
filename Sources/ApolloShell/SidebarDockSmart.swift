@@ -149,9 +149,12 @@ struct DockFileItem: View {
     let file: DockFile
     let model: SidebarDockModel
     let size: CGFloat
+    /// Bottom has no popout anchor yet, so folders fall back to their ordinary
+    /// open/context/drop behavior instead of creating an off-screen stack.
+    var allowsStacks = true
 
     var body: some View {
-        if file.folder {
+        if file.folder && allowsStacks {
             DockStackButton(id: file.id, help: file.name, image: file.icon, make: { model.stack(file) },
                             onMenu: { DockSmartMenu.file(file.url, pinned: file, model: model, at: $0) },
                             onDropFiles: { model.move($0, into: file.url) }) {
@@ -161,7 +164,7 @@ struct DockFileItem: View {
             DockPlainItem(id: file.id, help: file.name, image: file.icon, size: size,
                           onClick: { model.open(file.url) },
                           onMenu: { DockSmartMenu.file(file.url, pinned: file, model: model, at: $0) },
-                          onDropFiles: { _ in })
+                          onDropFiles: { urls in if file.folder { model.move(urls, into: file.url) } })
         }
     }
 }

@@ -640,26 +640,46 @@ struct SidebarDock: View {
     }
 
     var body: some View {
-        ViewThatFits(in: .vertical) {
-            column
-            ScrollView(.vertical, showsIndicators: false) {
-                column.padding(.vertical, 8)
+        Group {
+            if side.contentRoute == .dock {
+            ViewThatFits(in: .horizontal) {
+                horizontalRow
+                ScrollView(.horizontal, showsIndicators: false) {
+                    horizontalRow.padding(.horizontal, 8)
+                }
+                // Fade the horizontal overflow at the leading and trailing edges.
+                .mask {
+                    LinearGradient(
+                        stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.04),
+                                .init(color: .black, location: 0.96), .init(color: .clear, location: 1)],
+                        startPoint: .leading, endPoint: .trailing
+                    )
+                }
             }
-            // Oben und unten weich ausblenden statt hart abschneiden
-            // (Apple: Scroll-Kante statt Trennlinie).
-            .mask {
-                LinearGradient(
-                    stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.04),
-                            .init(color: .black, location: 0.96), .init(color: .clear, location: 1)],
-                    startPoint: .top, endPoint: .bottom
-                )
+            .frame(maxWidth: .infinity)
+        } else {
+            ViewThatFits(in: .vertical) {
+                verticalColumn
+                ScrollView(.vertical, showsIndicators: false) {
+                    verticalColumn.padding(.vertical, 8)
+                }
+                // Oben und unten weich ausblenden statt hart abschneiden
+                // (Apple: Scroll-Kante statt Trennlinie).
+                .mask {
+                    LinearGradient(
+                        stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.04),
+                                .init(color: .black, location: 0.96), .init(color: .clear, location: 1)],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                }
+            }
+            .frame(maxHeight: .infinity)
             }
         }
-        .frame(maxHeight: .infinity)
         .animation(SidebarMotion.spatial, value: entries.map(\.id))
     }
 
-    private var column: some View {
+    private var verticalColumn: some View {
         let entries = entries
         let items = model.items(entries, smart: options.smartGroups)
         let split = items.firstIndex { item in
@@ -681,7 +701,7 @@ struct SidebarDock: View {
             }
             if !preview {
                 divider
-                ForEach(model.files) { f in DockFileItem(file: f, model: model, size: size) }
+                ForEach(model.files) { f in DockFileItem(file: f, model: model, size: size, allowsStacks: side.allowsSidePopouts) }
                 DockTrashItem(model: model, size: size)
             }
         }
@@ -690,13 +710,44 @@ struct SidebarDock: View {
         .frame(maxWidth: .infinity)
     }
 
+    private var horizontalRow: some View {
+        let entries = entries
+        let items = model.items(entries, smart: options.smartGroups)
+        let split = items.firstIndex { item in
+            switch item {
+            case .app(let s): !s.pinned
+            case .group(let g): !g.members.contains(where: \.pinned)
+            }
+        }
+        let size = dockStyle.dockIconSize(CGFloat(options.iconSize.points))
+        return HStack(spacing: dockStyle.dockSpacing(4)) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                if index == split, index > 0 { divider }
+                switch item {
+                case .app(let s):
+                    if let entry = model.entry(s.bundleID) { appItem(entry, size: size) }
+                case .group(let g):
+                    groupItem(g, size: size)
+                }
+            }
+            if !preview {
+                divider
+                ForEach(model.files) { f in DockFileItem(file: f, model: model, size: size, allowsStacks: side.allowsSidePopouts) }
+                DockTrashItem(model: model, size: size)
+            }
+        }
+        .background { if !preview { DockDropZone { model.pinFiles($0) } } }
+        .onAppear { if let popout { model.wire(popout) } }
+        .frame(maxHeight: .infinity)
+    }
+
     @Environment(StatusPopoutModel.self) private var popout: StatusPopoutModel?
 
     private var divider: some View {
         Capsule()
             .fill(Color.primary.opacity(0.18))
-            .frame(width: 20, height: 2)
-            .padding(.vertical, 3)
+            .frame(width: side.contentRoute == .dock ? 2 : 20, height: side.contentRoute == .dock ? 20 : 2)
+            .padding(side.contentRoute == .dock ? .horizontal : .vertical, 3)
     }
 
     private func appItem(_ entry: SidebarDockModel.Entry, size: CGFloat) -> some View {
@@ -713,7 +764,7 @@ struct SidebarDock: View {
             onDropFiles: { model.openFiles($0, with: entry) },
             onDropApp: { model.place($0, onto: entry.bundleID) },
             onHover: { inside, frame in
-                guard options.windowPreviews, let popout else { return }
+                guard side.allowsSidePopouts, options.windowPreviews, let popout else { return }
                 if inside {
                     guard entry.running, let st = model.windowStack(entry) else { return }
                     popout.onStackHover(st, frame, true)
@@ -728,20 +779,37 @@ struct SidebarDock: View {
         )
     }
 
+    @ViewBuilder
     private func groupItem(_ g: DockGroup, size: CGFloat) -> some View {
         let icons = g.members.prefix(4).compactMap { model.entry($0.bundleID)?.icon }
         let running = g.members.contains(where: \.running)
-        return DockStackButton(id: g.id, help: "\(g.title) (\(g.members.count))", image: icons.first ?? NSImage(),
-                               make: { model.stack(g) }) {
-            DockGroupFace(icons: icons, size: size)
-        }
-        .overlay(alignment: side == .right ? .trailing : .leading) {
-            if running {
-                Circle().fill(dockStyle.paint(.dockIndicator, or: Color.primary.opacity(0.65))).frame(width: 4, height: 4)
-                    .offset(x: side == .right ? 5 : -5)
+        let face = DockGroupFace(icons: icons, size: size)
+        if !side.allowsSidePopouts {
+            // The future bottom popout will own this interaction. Until then,
+            // keep the visual group but never open the side-oriented stack.
+            face
+                .frame(width: 32, height: 32)
+                .help("\(g.title) (\(g.members.count))")
+                .accessibilityLabel("\(g.title), stack unavailable at bottom edge")
+                .overlay(alignment: .bottom) {
+                    if running {
+                        Circle().fill(dockStyle.paint(.dockIndicator, or: Color.primary.opacity(0.65))).frame(width: 4, height: 4)
+                            .offset(y: 5)
+                    }
+                }
+        } else {
+            DockStackButton(id: g.id, help: "\(g.title) (\(g.members.count))", image: icons.first ?? NSImage(),
+                            make: { model.stack(g) }) {
+                face
             }
+            .overlay(alignment: side == .right ? .trailing : .leading) {
+                if running {
+                    Circle().fill(dockStyle.paint(.dockIndicator, or: Color.primary.opacity(0.65))).frame(width: 4, height: 4)
+                        .offset(x: side == .right ? 5 : -5)
+                }
+            }
+            .allowsHitTesting(!preview)
         }
-        .allowsHitTesting(!preview)
     }
 }
 
@@ -772,6 +840,10 @@ private struct SidebarDockItem: View {
     @Environment(\.shellStyle) private var style
     @Environment(\.barSide) private var side
 
+    private var runningIndicatorAlignment: Alignment {
+        side == .bottom ? .bottom : (side == .right ? .trailing : .leading)
+    }
+
     var body: some View {
         Image(nsImage: entry.icon)
             .resizable()
@@ -779,7 +851,7 @@ private struct SidebarDockItem: View {
             .frame(width: iconSize, height: iconSize)
             .brightness(pressed || dropTarget ? -0.25 : 0)
             .opacity(entry.hidden ? 0.5 : 1)
-            .modifier(DockBounce(active: launching))
+            .modifier(DockBounce(active: launching, side: side))
             .frame(width: 32, height: 32)
             .background(Color.primary.opacity(hovering || dropTarget ? 0.14 : active ? 0.10 : 0), in: .rect(cornerRadius: 9))
             // Zaehler wie in Apples Dock: rote Kapsel oben rechts.
@@ -799,13 +871,14 @@ private struct SidebarDockItem: View {
                 }
             }
             .animation(.easeOut(duration: 0.18), value: badge)
-            .overlay(alignment: side == .right ? .trailing : .leading) {
+            .overlay(alignment: runningIndicatorAlignment) {
                 if entry.running {
                     Circle()
                         // Mit Theme: `--apollo-dock-indicator-color`.
                         .fill(style.paint(.dockIndicator, or: Color.primary.opacity(0.65)))
                         .frame(width: 4, height: 4)
-                        .offset(x: side == .right ? 5 : -5)
+                        .offset(x: side == .right ? 5 : side == .left ? -5 : 0,
+                                y: side == .bottom ? 5 : 0)
                 }
             }
             .overlay {
@@ -842,11 +915,18 @@ private struct SidebarDockItem: View {
 /// sonst dauernd und kostet Rechenzeit. Hoch abbremsend, runter wie fallend.
 private struct DockBounce: ViewModifier {
     let active: Bool
+    let side: BarSide
 
     func body(content: Content) -> some View {
         if active {
             content.phaseAnimator([0.0, 10.0]) { view, offset in
-                view.offset(x: offset)
+                if side == .bottom {
+                    // A horizontal dock bounces inward, away from its screen edge.
+                    view.offset(y: -offset)
+                } else {
+                    // Preserve the established side-dock motion.
+                    view.offset(x: offset)
+                }
             } animation: { offset in
                 offset > 0 ? .easeOut(duration: 0.22) : .easeIn(duration: 0.22)
             }
