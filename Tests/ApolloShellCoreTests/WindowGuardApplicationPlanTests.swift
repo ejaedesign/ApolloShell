@@ -19,7 +19,7 @@ struct WindowGuardApplicationPlanTests {
             canSetPosition: true,
             canSetSize: { Issue.record("a move-only clamp must not ask about resizing"); return false },
             setSize: { _ in Issue.record("a move-only clamp must not resize"); return false },
-            setPosition: { positions.append($0) }
+            setPosition: { positions.append($0); return true }
         )
 
         #expect(positions == [CGPoint(x: 100, y: 638)])
@@ -34,7 +34,8 @@ struct WindowGuardApplicationPlanTests {
             canSetPosition: true,
             canSetSize: { true },
             setSize: { size in calls.append("size \(size.width)x\(size.height)"); return true },
-            setPosition: { point in calls.append("position \(point.x),\(point.y)") }
+            readFrame: { bottomTarget },
+            setPosition: { point in calls.append("position \(point.x),\(point.y)"); return true }
         )
 
         #expect(calls == ["size 1512.0x938.0", "position 0.0,0.0"])
@@ -49,7 +50,7 @@ struct WindowGuardApplicationPlanTests {
             canSetPosition: true,
             canSetSize: { false },
             setSize: { _ in calls.append("size"); return true },
-            setPosition: { point in calls.append("position \(point.x),\(point.y)") }
+            setPosition: { point in calls.append("position \(point.x),\(point.y)"); return true }
         )
 
         #expect(calls == ["position 0.0,-44.0"])
@@ -64,7 +65,7 @@ struct WindowGuardApplicationPlanTests {
             canSetPosition: true,
             canSetSize: { true },
             setSize: { _ in calls.append("size"); return false },
-            setPosition: { point in calls.append("position \(point.x),\(point.y)") }
+            setPosition: { point in calls.append("position \(point.x),\(point.y)"); return true }
         )
 
         #expect(calls == ["size", "position 0.0,-44.0"])
@@ -82,7 +83,7 @@ struct WindowGuardApplicationPlanTests {
             canSetPosition: true,
             canSetSize: { true },
             setSize: { _ in calls.append("size"); return false },
-            setPosition: { point in calls.append("position \(point.x),\(point.y)") }
+            setPosition: { point in calls.append("position \(point.x),\(point.y)"); return true }
         )
 
         #expect(calls == ["size", "position 44.0,30.0"])
@@ -97,9 +98,68 @@ struct WindowGuardApplicationPlanTests {
             canSetPosition: false,
             canSetSize: { calls.append("can size"); return true },
             setSize: { _ in calls.append("size"); return true },
-            setPosition: { _ in calls.append("position") }
+            setPosition: { _ in calls.append("position"); return true }
         )
 
         #expect(calls.isEmpty)
+    }
+
+    @Test("a successful resize with unchanged height uses the bottom-safe actual-frame fallback")
+    func successfulResizeWithUnchangedHeightUsesActualFrameFallback() {
+        let plan = WindowClampApplicationPlan(current: current, target: bottomTarget)
+        var calls: [String] = []
+
+        let applied = plan.apply(
+            canSetPosition: true,
+            canSetSize: { true },
+            setSize: { _ in calls.append("size"); return true },
+            readFrame: { current },
+            setPosition: { point in calls.append("position \(point.x),\(point.y)"); return true }
+        )
+
+        #expect(applied)
+        #expect(calls == ["size", "position 0.0,-44.0"])
+    }
+
+    @Test("a successful partial height resize uses the partial actual height for bottom-safe fallback")
+    func successfulPartialHeightResizeUsesActualFrameFallback() {
+        let plan = WindowClampApplicationPlan(current: current, target: bottomTarget)
+        var calls: [String] = []
+        let partial = CGRect(x: 0, y: 0, width: 1512, height: 960)
+
+        let applied = plan.apply(
+            canSetPosition: true,
+            canSetSize: { true },
+            setSize: { _ in calls.append("size"); return true },
+            readFrame: { partial },
+            setPosition: { point in calls.append("position \(point.x),\(point.y)"); return true }
+        )
+
+        #expect(applied)
+        #expect(calls == ["size", "position 0.0,-22.0"])
+    }
+
+    @Test("a failed position write reports failure so callers do not record a synthetic target")
+    func failedPositionWriteReportsFailure() {
+        let plan = WindowClampApplicationPlan(
+            current: CGRect(x: 100, y: 700, width: 500, height: 300),
+            target: CGRect(x: 100, y: 638, width: 500, height: 300)
+        )
+        var attempted: [CGPoint] = []
+        var ledger = ClampLedger<String>()
+
+        let applied = plan.apply(
+            canSetPosition: true,
+            canSetSize: { Issue.record("a move-only clamp must not ask about resizing"); return false },
+            setSize: { _ in Issue.record("a move-only clamp must not resize"); return false },
+            setPosition: { point in attempted.append(point); return false }
+        )
+
+        #expect(!applied)
+        #expect(attempted == [CGPoint(x: 100, y: 638)])
+        if applied {
+            ledger.record("window", result: CGRect(x: 100, y: 638, width: 500, height: 300), now: 1)
+        }
+        #expect(ledger.count == 0)
     }
 }

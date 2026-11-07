@@ -484,12 +484,18 @@ final class WindowGuardWorker: @unchecked Sendable {
         }
         guard AX.isSettable(window, kAXPositionAttribute) else { return }
 
-        apply(target, to: window, current: frame, pid: pid)
+        guard apply(target, to: window, current: frame, pid: pid) else {
+            log.error("pid \(pid, privacy: .public): Fensterposition konnte nicht gesetzt werden; versuche erneut")
+            return
+        }
 
         // Nachlesen: Was die App daraus gemacht hat, ist der neue Stand. Hat
         // sie die Verkleinerung abgelehnt, ist das ihre Mindestbreite - dann
         // beim naechsten Mal gar nicht erst schmaler machen, nur schieben.
-        let result = AX.frame(of: window) ?? target
+        guard let result = AX.frame(of: window) else {
+            log.error("pid \(pid, privacy: .public): Fensterrahmen nach Korrektur nicht lesbar; versuche erneut")
+            return
+        }
         if target.width < frame.width - WindowClamp.tolerance,
            result.width > target.width + WindowClamp.tolerance {
             minWidths[window] = result.width
@@ -498,7 +504,7 @@ final class WindowGuardWorker: @unchecked Sendable {
         log.debug("pid \(pid, privacy: .public): \(String(describing: frame), privacy: .public) -> \(String(describing: result), privacy: .public)")
     }
 
-    private func apply(_ target: CGRect, to window: AXUIElement, current: CGRect, pid: pid_t) {
+    private func apply(_ target: CGRect, to window: AXUIElement, current: CGRect, pid: pid_t) -> Bool {
         // Chromium, Firefox & Co. schalten "AXEnhancedUserInterface" ein,
         // sobald Bedienungshilfen-Software laeuft; dann animieren sie jede
         // Aenderung und uebernehmen Position und Groesse nur teilweise. Fuer
@@ -509,7 +515,7 @@ final class WindowGuardWorker: @unchecked Sendable {
         defer { if enhanced { AX.setBool(app, AX.enhancedUserInterfaceAttribute, true) } }
 
         let plan = WindowClampApplicationPlan(current: current, target: target)
-        plan.apply(
+        return plan.apply(
             canSetPosition: AX.isSettable(window, kAXPositionAttribute),
             canSetSize: { AX.isSettable(window, kAXSizeAttribute) },
             setSize: { size in
@@ -517,8 +523,9 @@ final class WindowGuardWorker: @unchecked Sendable {
                 // ablehnen. Das Ergebnis bestimmt die sichere Ersatzposition.
                 AX.setSize(window, size) == .success
             },
+            readFrame: { AX.frame(of: window) },
             setPosition: { point in
-                AX.setPosition(window, point)
+                AX.setPosition(window, point) == .success
             }
         )
     }

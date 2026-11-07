@@ -124,8 +124,12 @@ public struct WindowClampApplicationPlan: Equatable, Sendable {
     public let resize: CGSize?
     public let targetPosition: CGPoint
     public let rejectedResizePosition: CGPoint
+    private let current: CGRect
+    private let target: CGRect
 
     public init(current: CGRect, target: CGRect) {
+        self.current = current
+        self.target = target
         resize = WindowClamp.requiresResize(from: current.size, to: target.size) ? target.size : nil
         targetPosition = target.origin
 
@@ -136,23 +140,45 @@ public struct WindowClampApplicationPlan: Equatable, Sendable {
         rejectedResizePosition = fallback
     }
 
+    /// Ersatzposition nach einer abgelehnten oder nur teilweise uebernommenen
+    /// Verkleinerung. Bei einer unteren Leiste richtet sie die untere Kante
+    /// des tatsaechlichen Rahmens am Ziel aus. Bei Seitenleisten bleibt die
+    /// bisherige Zielposition erhalten.
+    public func fallbackPosition(for actualFrame: CGRect) -> CGPoint {
+        var fallback = targetPosition
+        if target.height < current.height - WindowClamp.tolerance {
+            fallback.y = target.maxY - actualFrame.height
+        }
+        return fallback
+    }
+
     /// Fuehrt die fuer den Rahmen notwendige Reihenfolge aus. Die Schreiber
     /// sind Einspritzpunkte, damit dieselbe Entscheidung ohne AX-Freigabe
-    /// getestet werden kann.
+    /// getestet werden kann. Nach einem erfolgreichen Resize wird der Rahmen
+    /// erneut gelesen: AX-Erfolg bedeutet nicht, dass die App die Zielgroesse
+    /// vollstaendig uebernommen hat.
+    @discardableResult
     public func apply(
         canSetPosition: Bool,
         canSetSize: () -> Bool,
         setSize: (CGSize) -> Bool,
-        setPosition: (CGPoint) -> Void
-    ) {
-        guard canSetPosition else { return }
+        readFrame: () -> CGRect? = { nil },
+        setPosition: (CGPoint) -> Bool
+    ) -> Bool {
+        guard canSetPosition else { return false }
         guard let resize else {
-            setPosition(targetPosition)
-            return
+            return setPosition(targetPosition)
         }
 
-        let resized = canSetSize() && setSize(resize)
-        setPosition(resized ? targetPosition : rejectedResizePosition)
+        guard canSetSize(), setSize(resize) else {
+            return setPosition(fallbackPosition(for: current))
+        }
+
+        let actualFrame = readFrame() ?? current
+        let position = WindowClamp.requiresResize(from: actualFrame.size, to: resize)
+            ? fallbackPosition(for: actualFrame)
+            : targetPosition
+        return setPosition(position)
     }
 }
 
