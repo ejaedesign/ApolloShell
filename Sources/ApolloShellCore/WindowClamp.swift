@@ -10,9 +10,9 @@ import CoreGraphics
 ///
 /// Alle Rechtecke in EINEM Koordinatensystem. Die App rechnet in
 /// Bedienungshilfen-Koordinaten (Ursprung oben links am Hauptbildschirm, y
-/// nach unten), weil Fensterposition und -groesse dort so ankommen. Fuer das
-/// Zurechtruecken selbst spielt die Richtung von y keine Rolle: es aendert
-/// nur x und Breite.
+/// nach unten), weil Fensterposition und -groesse dort so ankommen. Bei einer
+/// unteren Leiste ist `maxY` die belegte Kante; AppKit-Rechtecke muessen vor
+/// dem Aufruf mit `flipped(_:primaryHeight:)` umgerechnet werden.
 public enum WindowClamp {
     /// Bruchteile eines Punkts ignorieren: Apps runden Positionen gern auf
     /// ganze Punkte, sonst wuerde ein Fenster bei x = 43.5 ewig nachgeschoben.
@@ -36,7 +36,6 @@ public enum WindowClamp {
     /// einer abgelehnten Verkleinerung, sonst 0). Schmaler wird es nie; dann
     /// wird eben nur verschoben und das Fenster reicht weiter nach rechts.
     ///
-    /// Steht die Leiste rechts (`side`), gilt dasselbe gespiegelt.
     public static func clampedFrame(
         window: CGRect,
         screen: CGRect,
@@ -44,11 +43,21 @@ public enum WindowClamp {
         side: BarSide = .left,
         minWidth: CGFloat = 0
     ) -> CGRect? {
-        if side == .right {
-            let m = clampedFrame(window: BarSide.mirrored(window, in: screen), screen: screen,
-                                 reservedWidth: reservedWidth, minWidth: minWidth)
-            return m.map { BarSide.mirrored($0, in: screen) }
-        }
+        let geometry = side.geometry
+        let canonicalWindow = geometry.canonicalized(window, in: screen)
+        let canonicalScreen = geometry.canonicalized(screen, in: screen)
+        let minimumExtent = geometry.axis == .vertical ? minWidth : 0
+        return clampedCanonicalFrame(window: canonicalWindow, screen: canonicalScreen,
+                                     reservedWidth: reservedWidth, minWidth: minimumExtent)
+            .map { geometry.decanonicalized($0, in: screen) }
+    }
+
+    private static func clampedCanonicalFrame(
+        window: CGRect,
+        screen: CGRect,
+        reservedWidth: CGFloat,
+        minWidth: CGFloat
+    ) -> CGRect? {
         guard reservedWidth > 0, window.width > 0, window.height > 0 else { return nil }
         let limit = screen.minX + reservedWidth
         guard window.minX < limit - tolerance else { return nil }

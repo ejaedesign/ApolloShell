@@ -5,13 +5,14 @@ public enum SidebarBleed {
 
     public static func edges(screen: CGRect, others: [CGRect], side: BarSide = .left,
                              depth: CGFloat = depth) -> (left: CGFloat, bottom: CGFloat) {
-        if side == .right {
-            return edges(screen: screen, others: others.map { BarSide.mirrored($0, in: screen) }, depth: depth)
-        }
         let rest = others.filter { $0 != screen }
         func free(_ r: CGRect) -> Bool { !rest.contains { $0.intersects(r) } }
-        let left = free(CGRect(x: screen.minX - depth, y: screen.minY, width: depth, height: screen.height)) ? depth : 0
-        let below = CGRect(x: screen.minX - left, y: screen.minY - depth, width: screen.width + left, height: depth)
+
+        let geometry = side.geometry
+        let left = geometry.axis == .vertical && free(geometry.screenEdge.exteriorStrip(of: screen, depth: depth)) ? depth : 0
+        let belowX = geometry.screenEdge == .left ? screen.minX - left : screen.minX
+        let belowWidth = screen.width + left
+        let below = CGRect(x: belowX, y: screen.minY - depth, width: belowWidth, height: depth)
         return (left, free(below) ? depth : 0)
     }
 }
