@@ -89,6 +89,30 @@ struct WindowGuardApplicationPlanTests {
         #expect(calls == ["size", "position 44.0,30.0"])
     }
 
+    @Test("a rejected right-side width resize keeps the geometry-derived target position")
+    func rejectedRightSideWidthResizeKeepsTargetPosition() throws {
+        let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let current = CGRect(x: 0, y: 30, width: 1512, height: 952)
+        let target = try #require(WindowClamp.clampedFrame(
+            window: current,
+            screen: screen,
+            reservedWidth: 44,
+            side: .right
+        ))
+        let plan = WindowClampApplicationPlan(current: current, target: target)
+        var calls: [String] = []
+
+        plan.apply(
+            canSetPosition: true,
+            canSetSize: { true },
+            setSize: { _ in calls.append("size"); return false },
+            setPosition: { point in calls.append("position \(point.x),\(point.y)"); return true }
+        )
+
+        #expect(target == CGRect(x: 0, y: 30, width: 1468, height: 952))
+        #expect(calls == ["size", "position 0.0,30.0"])
+    }
+
     @Test("an unsettable position performs no resize or move")
     func unsettablePositionPerformsNoOperations() {
         let plan = WindowClampApplicationPlan(current: current, target: bottomTarget)
@@ -114,6 +138,23 @@ struct WindowGuardApplicationPlanTests {
             canSetSize: { true },
             setSize: { _ in calls.append("size"); return true },
             readFrame: { current },
+            setPosition: { point in calls.append("position \(point.x),\(point.y)"); return true }
+        )
+
+        #expect(applied)
+        #expect(calls == ["size", "position 0.0,-44.0"])
+    }
+
+    @Test("a successful resize without frame readback uses the current frame for bottom-safe fallback")
+    func successfulResizeWithoutFrameReadbackUsesCurrentFrameFallback() {
+        let plan = WindowClampApplicationPlan(current: current, target: bottomTarget)
+        var calls: [String] = []
+
+        let applied = plan.apply(
+            canSetPosition: true,
+            canSetSize: { true },
+            setSize: { _ in calls.append("size"); return true },
+            readFrame: { nil },
             setPosition: { point in calls.append("position \(point.x),\(point.y)"); return true }
         )
 
