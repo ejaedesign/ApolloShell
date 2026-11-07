@@ -140,12 +140,17 @@ public struct BarDockOptions: Codable, Equatable, Sendable {
     public var iconSize: IconSize
     public var smartGroups: Bool
     public var windowPreviews: Bool
+    /// Nutzerdefinierte App-Ordner. Sie gehoeren zur ApolloShell-Leiste, nicht
+    /// zu den angehefteten Eintraegen von Apples Dock.
+    public var manualFolders: [ManualAppFolder]
 
-    public init(showRunning: Bool = true, iconSize: IconSize = .medium, smartGroups: Bool = true, windowPreviews: Bool = true) {
+    public init(showRunning: Bool = true, iconSize: IconSize = .medium, smartGroups: Bool = true,
+                windowPreviews: Bool = true, manualFolders: [ManualAppFolder] = []) {
         self.showRunning = showRunning
         self.iconSize = iconSize
         self.smartGroups = smartGroups
         self.windowPreviews = windowPreviews
+        self.manualFolders = manualFolders
     }
 
     public init(from decoder: any Decoder) throws {
@@ -155,6 +160,9 @@ public struct BarDockOptions: Codable, Equatable, Sendable {
         c.lenient(.iconSize, into: &iconSize)
         c.lenient(.smartGroups, into: &smartGroups)
         c.lenient(.windowPreviews, into: &windowPreviews)
+        if let folders: LenientList<ManualAppFolder> = c.lenient(.manualFolders) {
+            manualFolders = folders.values
+        }
     }
 }
 
