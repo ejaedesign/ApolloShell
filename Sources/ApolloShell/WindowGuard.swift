@@ -508,13 +508,19 @@ final class WindowGuardWorker: @unchecked Sendable {
         if enhanced { AX.setBool(app, AX.enhancedUserInterfaceAttribute, false) }
         defer { if enhanced { AX.setBool(app, AX.enhancedUserInterfaceAttribute, true) } }
 
-        // Erst schmaler, dann schieben: so ragt das Fenster zwischendurch
-        // nie rechts ueber den Bildschirm. Lehnt die App die Groesse ab,
-        // wird es trotzdem verschoben.
-        if WindowClamp.requiresResize(from: current.size, to: target.size) {
-            AX.setSize(window, target.size)
-        }
-        AX.setPosition(window, target.origin)
+        let plan = WindowClampApplicationPlan(current: current, target: target)
+        plan.apply(
+            canSetPosition: AX.isSettable(window, kAXPositionAttribute),
+            canSetSize: { AX.isSettable(window, kAXSizeAttribute) },
+            setSize: { size in
+                // AX kann eine als setzbar gemeldete Groesse trotzdem
+                // ablehnen. Das Ergebnis bestimmt die sichere Ersatzposition.
+                AX.setSize(window, size) == .success
+            },
+            setPosition: { point in
+                AX.setPosition(window, point)
+            }
+        )
     }
 }
 

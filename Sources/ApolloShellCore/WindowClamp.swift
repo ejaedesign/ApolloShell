@@ -112,6 +112,50 @@ public enum WindowClamp {
     }
 }
 
+/// Die testbare Ausfuehrungsentscheidung der Fensterwache.
+///
+/// Ist eine Verkleinerung fuer eine untere Leiste nicht moeglich, darf das
+/// Fenster nicht auf der unverkleinerten Zielposition bleiben: Es wuerde
+/// wieder in die Leiste ragen. Stattdessen bleibt seine Hoehe erhalten und
+/// seine untere Kante wird an die untere Kante des geklemmten Ziels gelegt.
+/// Breiten-Ablehnungen der linken und rechten Leiste behalten dagegen die
+/// bisherige Zielposition bei.
+public struct WindowClampApplicationPlan: Equatable, Sendable {
+    public let resize: CGSize?
+    public let targetPosition: CGPoint
+    public let rejectedResizePosition: CGPoint
+
+    public init(current: CGRect, target: CGRect) {
+        resize = WindowClamp.requiresResize(from: current.size, to: target.size) ? target.size : nil
+        targetPosition = target.origin
+
+        var fallback = target.origin
+        if target.height < current.height - WindowClamp.tolerance {
+            fallback.y = target.maxY - current.height
+        }
+        rejectedResizePosition = fallback
+    }
+
+    /// Fuehrt die fuer den Rahmen notwendige Reihenfolge aus. Die Schreiber
+    /// sind Einspritzpunkte, damit dieselbe Entscheidung ohne AX-Freigabe
+    /// getestet werden kann.
+    public func apply(
+        canSetPosition: Bool,
+        canSetSize: () -> Bool,
+        setSize: (CGSize) -> Bool,
+        setPosition: (CGPoint) -> Void
+    ) {
+        guard canSetPosition else { return }
+        guard let resize else {
+            setPosition(targetPosition)
+            return
+        }
+
+        let resized = canSetSize() && setSize(resize)
+        setPosition(resized ? targetPosition : rejectedResizePosition)
+    }
+}
+
 /// Merkt sich pro Fenster, was die Wache zuletzt getan hat, damit sie sich
 /// nicht mit einer App oder mit sich selbst in eine Schleife verbeisst.
 ///
