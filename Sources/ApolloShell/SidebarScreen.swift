@@ -13,6 +13,7 @@ final class SidebarScreen {
     /// Fenster dieser Leiste und macht es breiter, solange es offen ist.
     private let popout = StatusPopout()
     private let edges = SidebarEdges()
+    private let bottomDockInteraction = BottomDockInteraction()
     /// Welcher Bildschirm das ist - wird bei jedem Umbau aufgefrischt.
     private(set) var info: ScreenInfo
     private var frame: NSRect
@@ -23,6 +24,8 @@ final class SidebarScreen {
     private let settings: ShellSettingsStore
     /// Vordergrund-App ist auf DIESEM Bildschirm im Vollbild.
     private(set) var isHiddenForFullscreen = false
+    private var isConcealedForBottomDock = false
+    var onBottomDockLease: (BottomDockLease, Bool) -> Void = { _, _ in }
     /// Dieses Popout geht auf - der Verwalter schliesst die anderen.
     var onPopoutOpen: (ObjectIdentifier) -> Void = { _ in }
 
@@ -36,7 +39,8 @@ final class SidebarScreen {
         // nur im selben GlassEffectContainer verschmilzt das Popout mit der
         // Leiste.
         let hosting = FirstMouseHostingView(
-            rootView: SidebarRoot(settings: settings, context: context, popout: popout.model, edges: edges).shellTheme()
+            rootView: SidebarRoot(settings: settings, context: context, popout: popout.model, edges: edges,
+                                  bottomDockInteraction: bottomDockInteraction).shellTheme()
         )
         // Ohne das bestimmt die Ansicht die Fenstergroesse mit und kaempft mit
         // `layout()`, sobald das Fenster fuer ein Popout breiter wird.
@@ -55,6 +59,8 @@ final class SidebarScreen {
             guard let self else { return }
             self.onPopoutOpen(ObjectIdentifier(self))
         }
+        bottomDockInteraction.leaseChanged = { [weak self] lease, active in self?.onBottomDockLease(lease, active) }
+        popout.onVisibilityChanged = { [weak self] open in self?.onBottomDockLease(.popout, open) }
         // SwiftUI meldet Symbolrahmen in Koordinaten der Ansicht (oben = 0,
         // NSHostingView ist geflippt); AppKit rechnet sie ueber das Fenster
         // auf den Bildschirm um.
@@ -80,6 +86,7 @@ final class SidebarScreen {
     /// Bildschirm weg oder abgewaehlt: Popout zu, Fenster weg.
     func tearDown() {
         popout.close()
+        bottomDockInteraction.leaseChanged = { _, _ in }
         panel.orderOut(nil)
         lastFrame = nil
     }
@@ -104,9 +111,25 @@ final class SidebarScreen {
             // Ohne Leiste haette das Popout nichts, woran es haengt.
             popout.close()
         }
+        applyVisibility()
+        if !hidden { showIfNeeded() }
+    }
+
+    /// Concealment retains the panel frame so WindowGuard's reservation is
+    /// constant, while making the dormant dock invisible and click-through.
+    func setConcealedForBottomDock(_ concealed: Bool) {
+        guard concealed != isConcealedForBottomDock else { return }
+        isConcealedForBottomDock = concealed
+        applyVisibility()
+        if !concealed { showIfNeeded() }
+    }
+
+    var isVisibleForDemand: Bool { !isHiddenForFullscreen && !isConcealedForBottomDock }
+
+    private func applyVisibility() {
+        let hidden = isHiddenForFullscreen || isConcealedForBottomDock
         panel.alphaValue = hidden ? 0 : 1
         panel.ignoresMouseEvents = hidden
-        if !hidden { showIfNeeded() }
     }
 
     /// Nur nach vorne holen, wenn sie sichtbar sein soll und es gerade nicht

@@ -634,6 +634,7 @@ struct SidebarDock: View {
     @Environment(\.barPreview) private var preview
     @Environment(\.shellStyle) private var dockStyle
     @Environment(\.barSide) private var side
+    @Environment(\.bottomDockInteraction) private var bottomDockInteraction
 
     private var entries: [SidebarDockModel.Entry] {
         options.showRunning ? model.entries : model.entries.filter(\.pinned)
@@ -759,7 +760,12 @@ struct SidebarDock: View {
             launching: model.launching.contains(entry.bundleID),
             badge: model.badges[entry.bundleID],
             onClick: { model.click(entry, modifiers: $0) },
-            onMenu: { DockMenu.show(for: entry, model: model, at: $0) },
+            onMenu: { view in
+                bottomDockInteraction?.leaseChanged(.nativeMenu, true)
+                DockMenu.show(for: entry, model: model, at: view) {
+                    bottomDockInteraction?.leaseChanged(.nativeMenu, $0)
+                }
+            },
             onScroll: { model.scroll(entry) },
             onDropFiles: { model.openFiles($0, with: entry) },
             onDropApp: { model.place($0, onto: entry.bundleID) },
@@ -908,6 +914,7 @@ private struct SidebarDockItem: View {
             .accessibilityLabel(entry.running ? String(localized: "\(entry.name), running") : entry.name)
             .accessibilityAddTraits(.isButton)
     }
+
 }
 
 /// Huepfen beim Start wie im Apple-Dock - dort weg vom Bildschirmrand, hier

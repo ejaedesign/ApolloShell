@@ -19,6 +19,7 @@ struct SidebarRoot: View {
     let context: BarModuleContext
     let popout: StatusPopoutModel
     let edges: SidebarEdges
+    let bottomDockInteraction: BottomDockInteraction
     /// Gemessene Groesse jedes Inhalts: so steht die Zielgroesse schon fest,
     /// bevor die Beule losgeht, und ein spaeter geladener Inhalt (Bluetooth
     /// liest erst nach dem Oeffnen) gleitet auf seine neue Hoehe.
@@ -27,7 +28,7 @@ struct SidebarRoot: View {
 
     var body: some View {
         if edges.side.contentRoute == .dock {
-            BottomDockRoot(settings: settings, context: context, edges: edges)
+            BottomDockRoot(settings: settings, context: context, edges: edges, interaction: bottomDockInteraction)
         } else {
             sidebarBody
         }
@@ -83,6 +84,7 @@ struct SidebarRoot: View {
         let settings: ShellSettingsStore
         let context: BarModuleContext
         let edges: SidebarEdges
+        let interaction: BottomDockInteraction
         @Environment(\.shellStyle) private var style
 
         var body: some View {
@@ -93,6 +95,7 @@ struct SidebarRoot: View {
                         .modifier(SidebarGlass(shape: RoundedRectangle(cornerRadius: style.barRadius(0), style: .continuous)))
                     SidebarContent(settings: settings, context: context)
                         .environment(\.barSide, .bottom)
+                        .environment(\.bottomDockInteraction, interaction)
                         .frame(width: geometry.size.width, height: dockHeight, alignment: .topLeading)
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)

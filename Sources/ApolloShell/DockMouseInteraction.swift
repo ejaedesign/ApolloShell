@@ -29,6 +29,7 @@ struct DockMouseCatcher: NSViewRepresentable {
     let onDropFiles: ([URL]) -> Void
     let onDropApp: (String) -> Void
     let onDropTarget: (Bool) -> Void
+    @Environment(\.bottomDockInteraction) private var bottomDockInteraction
 
     func makeNSView(context: Context) -> DockMouseView {
         let view = DockMouseView()
@@ -49,7 +50,11 @@ struct DockMouseCatcher: NSViewRepresentable {
         view.onScroll = onScroll
         view.onDropFiles = onDropFiles
         view.onDropApp = onDropApp
-        view.onDropTarget = onDropTarget
+        view.onDropTarget = { active in
+            self.onDropTarget(active)
+            self.bottomDockInteraction?.leaseChanged(.fileDragDrop, active)
+        }
+        view.onLease = { lease, active in self.bottomDockInteraction?.leaseChanged(lease, active) }
     }
 }
 
@@ -72,6 +77,7 @@ final class DockMouseView: NSView, NSDraggingSource {
     var onDropFiles: ([URL]) -> Void = { _ in }
     var onDropApp: (String) -> Void = { _ in }
     var onDropTarget: (Bool) -> Void = { _ in }
+    var onLease: (BottomDockLease, Bool) -> Void = { _, _ in }
 
     private var holdTimer: Timer?
     /// Menue kam durch Halten: das Loslassen danach ist kein Klick.
@@ -105,6 +111,7 @@ final class DockMouseView: NSView, NSDraggingSource {
         dragging = false
         downPoint = event.locationInWindow
         onPress(true)
+        onLease(.mouseDownDrag, true)
         let timer = Timer(timeInterval: Self.holdDelay, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, !self.dragging else { return }
@@ -138,6 +145,7 @@ final class DockMouseView: NSView, NSDraggingSource {
         holdTimer?.invalidate()
         holdTimer = nil
         downPoint = nil
+        onLease(.mouseDownDrag, false)
         if dragging {
             dragging = false
             return
@@ -178,6 +186,7 @@ final class DockMouseView: NSView, NSDraggingSource {
 
     override func draggingEnded(_ sender: NSDraggingInfo) {
         onDropTarget(false)
+        onLease(.mouseDownDrag, false)
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {

@@ -26,5 +26,6 @@ let package = Package(
             .product(name: "Sparkle", package: "Sparkle"),
         ]),
         .testTarget(name: "ApolloShellCoreTests", dependencies: ["ApolloShellCore"]),
+        .testTarget(name: "ApolloShellTests", dependencies: ["ApolloShell", "ApolloShellCore"]),
     ]
 )

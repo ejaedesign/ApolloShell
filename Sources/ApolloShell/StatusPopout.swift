@@ -37,6 +37,8 @@ final class StatusPopout {
     /// darauf ein Popout, das auf einem anderen Bildschirm noch offen steht -
     /// es ist immer nur eines offen.
     var onOpen: () -> Void = {}
+    /// Keeps a bottom dock revealed while one of its popouts owns interaction.
+    var onVisibilityChanged: (Bool) -> Void = { _ in }
 
     /// Breite des Leistenfensters mit offenem Popout: Leiste, breitestes
     /// Popout und Luft fuer das Ueberschiessen der Kurve (~1,5 %).
@@ -201,6 +203,7 @@ final class StatusPopout {
         }
         closing = false
         withAnimation(StatusPopoutMotion.spatial) { model.show(kind, anchorY: anchorY) }
+        onVisibilityChanged(true)
         installMonitors()
         registerEscape()
     }
@@ -208,6 +211,7 @@ final class StatusPopout {
     func close() {
         hoverOpen?.cancel()
         guard model.isOpen else { return }
+        onVisibilityChanged(false)
         hoverClose?.cancel()
         byHover = false
         generation += 1

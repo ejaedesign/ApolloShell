@@ -79,6 +79,22 @@ final class Sidebar {
     private var appearanceObservation: NSKeyValueObservation?
     /// Breite beim letzten Vermessen der Fenster.
     private var laidOutWidth: CGFloat = 0
+    /// Bottom mode alone owns this reducer adapter; sidebars retain their
+    /// existing direct visibility path.
+    private lazy var bottomDockCoordinator: BottomDockCoordinator = {
+        let coordinator = BottomDockCoordinator()
+        coordinator.setConcealed = { [weak self] id, concealed in
+            self?.bars[id]?.setConcealedForBottomDock(concealed)
+        }
+        coordinator.setFullscreen = { [weak self] id, hidden in
+            self?.bars[id]?.setHiddenForFullscreen(hidden)
+        }
+        coordinator.closePopout = { [weak self] id in
+            self?.bars[id]?.closePopout()
+        }
+        coordinator.demandChanged = { [weak self] in self?.updateModelDemand() }
+        return coordinator
+    }()
 
     /// `settings`: welche Bausteine in welcher Reihenfolge und auf welchen
     /// Bildschirmen (Nexus > Leiste). SwiftUI beobachtet sie und baut die
@@ -152,6 +168,11 @@ final class Sidebar {
     func setFullscreenScreens(_ ids: Set<CGDirectDisplayID>) {
         guard ids != fullscreenScreens else { return }
         fullscreenScreens = ids
+        if settings.settings.bar.side == .bottom {
+            bottomDockCoordinator.setFullscreenDisplays(ids)
+            updateModelDemand()
+            return
+        }
         for (id, bar) in bars {
             bar.setHiddenForFullscreen(ids.contains(id))
         }
@@ -161,7 +182,9 @@ final class Sidebar {
     /// Unsichtbar braucht niemand CPU-Werte oder Wetter: die geteilten
     /// Modelle ruhen, sobald keine Leiste mehr zu sehen ist.
     private func updateModelDemand() {
-        let anyVisible = bars.values.contains { !$0.isHiddenForFullscreen }
+        let anyVisible = settings.settings.bar.side == .bottom
+            ? bottomDockCoordinator.hasVisibleDock
+            : bars.values.contains { !$0.isHiddenForFullscreen }
         cpu.paused = !anyVisible
         weather.paused = !anyVisible
         dock.badgesPaused = !anyVisible
@@ -188,6 +211,9 @@ final class Sidebar {
             make: { screen in
                 let bar = SidebarScreen(screen: screen, settings: settings, context: context)
                 bar.onPopoutOpen = { [weak self] id in self?.closePopouts(except: id) }
+                bar.onBottomDockLease = { [weak self, id = screen.displayID] lease, active in
+                    self?.bottomDockCoordinator.setLease(displayID: id, lease: lease, active: active)
+                }
                 return bar
             },
             update: { bar, screen in
@@ -207,6 +233,14 @@ final class Sidebar {
         laidOutWidth = Sidebar.width
         Sidebar.side = settings.settings.bar.side
         Sidebar.rightScreens = Sidebar.side == .right ? Set(bars.keys) : []
+        if Sidebar.side == .bottom {
+            bottomDockCoordinator.rebuild(selected: placed, physical: ShellScreens.current(), dockThickness: Sidebar.width)
+            bottomDockCoordinator.setFullscreenDisplays(fullscreenScreens)
+        } else {
+            bottomDockCoordinator.tearDown()
+            for bar in bars.values { bar.setConcealedForBottomDock(false) }
+        }
+        updateModelDemand()
         log.notice("Leisten auf \(placed.count, privacy: .public) Bildschirm(en)")
         onScreensChange(placed.map(\.info))
     }

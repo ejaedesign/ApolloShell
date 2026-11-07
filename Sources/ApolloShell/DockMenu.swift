@@ -27,13 +27,15 @@ import SwiftUI
 /// Beim Oeffnen gebaut, damit Fensterliste, Befehle und Zustand stimmen.
 @MainActor
 enum DockMenu {
-    static func show(for entry: SidebarDockModel.Entry, model: SidebarDockModel, at view: NSView) {
+    static func show(for entry: SidebarDockModel.Entry, model: SidebarDockModel, at view: NSView,
+                     onVisibilityChanged: @escaping (Bool) -> Void = { _ in }) {
         // Zuerst das echte Menue von Apples Dock: dort stehen die Eintraege,
         // die die App selbst liefert (zuletzt benutzte Dokumente, eigene
         // Befehle) - die kann von aussen niemand erraten. Klappt das nicht
         // (Symbol nicht in Apples Dock, kein Zugriff), bleibt das selbst
         // gebaute Menue darunter.
         Task { @MainActor in
+            defer { onVisibilityChanged(false) }
             let nodes = await AppleDockMenu.snapshot(bundleID: entry.bundleID)
             if !nodes.isEmpty {
                 NativeAppMenu.popUp(mirrored(nodes, entry: entry, model: model), at: view)
